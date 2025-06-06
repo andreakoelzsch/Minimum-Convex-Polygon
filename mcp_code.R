@@ -16,6 +16,7 @@ fishers_mv2_prj$id <- mt_track_id(fishers_mv2_prj)
 fishers_p_sp <- as_Spatial(fishers_mv2_prj[,'id'])
 ## function mcp is very particular about the input object, it must only contain 1 column, and names of the individuals names have to follow the validNames() rules
 fishers_p_sp <- fishers_p_sp[,(names(fishers_p_sp) %in% "id")] 
+fishers_p_sp$id <- make.names(as.character(fishers_p_sp$id),allow_=F)
 levels(fishers_p_sp$id) <- validNames(levels(fishers_p_sp$id))
 mcp95 <- mcp(fishers_p_sp, percent=mcpPercentage, unin ="m",unout="km2")
 mcp95$area # area in km2

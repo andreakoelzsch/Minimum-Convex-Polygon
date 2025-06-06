@@ -1,143 +1,202 @@
-library('move2')
-library('move')
-library('ggmap')
-library('adehabitatHR')
-library('shiny')
-library('shinycssloaders')
-library('fields')
-library('scales')
-library('lubridate')
-library('rgeos')
-library('zip')
-library("shinyBS")
+library(move2)
+library(adehabitatHR)
+library(shiny)
+library(fields)
+library(zip)
+library(shinyBS)
+library(sf)
+library(pals)
+library(leaflet)
+library(leaflet.extras)
+library(htmlwidgets)
+# library(webshot2) # needed for save as PNG (add to appspecs if activated)
+library(dplyr)
+# library(chromote) #
 
-## ToDo:
-## final product:
-# - have the MCPs + tracks displayed on a leaflet map - this substitutes the current one
-# - be able to adjust the %, exactly like in the option "Percentage of points the MCP should overlap" in the current version
-# - create a table with an area per track similar to the current one,
-# - enable downloading the MCP as a GeoJSON, kmz, and GeoPackage (GPKG) - all possible to do via sf::st_write() - discart the current options
-# - optional: enable downloading map as a png, probably with webshot or similar. Not sure how straight forward this is
-## additional changes that are needed
-# replace functions of rgeos, as this library is deprecated
-# if leaflet turns out very complicated, use same approach as in OSM App, so no API-key is needed
-## a more current MCP code: in the script "mcp_code.R"
-
-
-
-
+##### Interface ######
 shinyModuleUserInterface <- function(id, label) {
   ns <- NS(id)
   
   tagList(
-    titlePanel("Minimum Convex Polygon(s) on a Map"),
+    titlePanel("Minimum Convex Polygon (MCP)"),
     sidebarLayout(
       sidebarPanel(
-        sliderInput(inputId = ns("num"), 
-                    label = "Choose a margin size", 
-                    value = 0.001, min = 0, max = 30, step=0.01),
-        sliderInput(inputId = ns("perc"), 
-                    label = "Percentage of points the MCP should overlap", 
-                    value = 95, min = 0, max = 100),
-        sliderInput(inputId = ns("zoom"), 
-                    label = "Resolution of background map", 
-                    value = 5, min = 3, max = 18, step=1),
-        bsTooltip(id=ns("zoom"), title="Zoom of background map (possible values from 3 (continent) to 18 (building)). Depending on the data, high resolutions might not be possible.", placement = "bottom", trigger = "hover", options = list(container = "body")),
-        textInput(ns("api"), "Enter your stadia API key. (This is required until MoveApps provides its OSM mirror. Register with stamen, it is free: https://stadiamaps.com/stamen/onboarding/create-account", value = ""),
-        downloadButton(ns("act"),"Save map"),
-        downloadButton(ns("act2"),"Save MCP as shapefile")
-        ,width = 2),
-      mainPanel(
-        withSpinner(plotOutput(ns("map"),height="85vh"))
-      ,width = 10)
+        sliderInput(ns("perc"), "Percentage of points included in MCP", min = 0, max = 100, value = 95, width = "100%"),
+        checkboxGroupInput(ns("animal_selector"), "Select Track:", choices = NULL),
+        downloadButton(ns("save_html"),"Download as HTML", class = "btn-sm"),
+        # downloadButton(ns("save_png"), "Save Map as PNG", class = "btn-sm"),
+        # downloadButton(ns("download_geojson"), "Download MCP as GeoJSON", class = "btn-sm"),
+        downloadButton(ns("download_kmz"), "Download as KMZ", class = "btn-sm"),
+        bsTooltip(id=ns("download_kmz"), title="Format for GoogleEarth", placement = "bottom", trigger = "hover", options = list(container = "body")),
+        downloadButton(ns("download_gpkg"), "Download as GPKG", class = "btn-sm"),
+        bsTooltip(id=ns("download_gpkg"), title="Shapefile for QGIS/ArcGIS", placement = "bottom", trigger = "hover", options = list(container = "body")),
+        downloadButton(ns("download_mcp_table"), "Download MCP Areas Table", class = "btn-sm"),
+        ,width = 3),
+      mainPanel(leafletOutput(ns("leafmap"), height = "85vh") ,width = 9)
     )
   )
 }
 
+
+
+#####server######
+
 shinyModule <- function(input, output, session, data) {
+  ns <- session$ns
   current <- reactiveVal(data)
-    
-  n.all <- length(mt_time(data))
-  data <- data[!duplicated(paste0(round_date(mt_time(data), "1 mins"), mt_track_id(data))),]
-  logger.info(paste0("For better performance, the data have been thinned to max 1 minute resolution. From the total ",n.all," positions, the algorithm retained ",length(mt_time(data))," positions for calculation."))
-  
+
   # exclude all individuals with less than 5 locations
-  data5 <- data[mt_track_id(data) %in% names(which(table(mt_track_id(data))>=5)),]
-  if (any(table(mt_track_id(data))<5)) logger.info(paste("It is only possible to calculate Minimum Convex Polygons for tracks with at least 5 locations. In your data set the individual(s):",names(which(table(mt_track_id(data))<5)),"do not fulfill this requirement and are removed from the MCP analysis. They are still available in the output data set that is passed on to the next App."))
-  
-  mcpmap.re <- reactiveVal()
-  mcpgeo.data.re <- reactiveVal()
-  
-  output$map <- renderPlot({
-  data5_move1 <- moveStack(to_move(data5))
-  data.sp <- move2ade(data5_move1)
-  data.spt <- spTransform(data.sp,CRSobj=paste0("+proj=aeqd +lat_0=",round(mean(coordinates(data5_move1)[,2]),digits=1)," +lon_0=",round(mean(coordinates(data5_move1)[,1]),digits=1)," +x_0=0 +y_0=0 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"))
-    
-  data.geo.all <- as.data.frame(data5_move1) #hier trackId nur für MoveStacks, oben gezwungen
-  names(data.geo.all) <- make.names(names(data.geo.all),allow_=FALSE)
-  if(!any(names(data.geo.all)=="location.long")) data.geo.all$location.long <- data.geo.all$coords.x1
-  if(!any(names(data.geo.all)=="location.lat")) data.geo.all$location.lat <- data.geo.all$coords.x2
-  data.geo <- data.geo.all[,c("location.long","location.lat","trackId")] #track is already a valid name (validNames()), so no need to adapt; note that track comes from the move2 object
-
-  mcp.data <- mcp(data.spt,percent=input$perc,unin="m",unout="km2")  #mcp() need at least 5 locations per ID, is projected to aeqd in metre!
-  mcpgeo.data <- spTransform(mcp.data,CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +towgs84=0,0,0")) 
-
-  if(input$api=="") logger.info("no API key entered") else register_stadiamaps(input$api)
-  
-  # map <- get_map(bbox(extent(data5)+c(-input$num,input$num,-input$num,input$num)),source="osm",force=TRUE,zoom=input$zoom)
-  map <- get_stadiamap(bbox(extent(data5_move1)+c(-input$num,input$num,-input$num,input$num)),source="stamen_terrain",force=TRUE,zoom=input$zoom)
-
-  mcpmap <- ggmap(map) +
-      geom_point(data=data.geo, 
-                 aes(x=location.long, y=location.lat, col=trackId,shape='.'),show.legend=FALSE) +
-      geom_path(data=data.geo, 
-                 aes(x=location.long, y=location.lat, col=trackId),show.legend=FALSE) +
-      geom_polygon(data=fortify(mcpgeo.data),
-                     aes(long,lat,colour=id,fill=id),
-                     alpha=0.3) +
-      theme(legend.justification = "top") +
-      labs(x="Longitude", y="Latitude") +
-      scale_fill_manual(name="Animal", values=tim.colors(length(namesIndiv(data5_move1))),aesthetics=c("colour","fill"))
-    
-  mcp.data.df <- data.frame(mcp(data.spt,percent=input$perc,unin="m",unout="km2"))
-  mcp.data.df$area <- round(mcp.data.df$area,digits=3)
-  names(mcp.data.df)[2] <- paste0("area (km2) - ",input$perc,"% MCP")
-  write.csv(mcp.data.df,file=appArtifactPath("MCP_areas.csv"),row.names=FALSE)
-  #write.csv(mcp.data.df,"MCP_areas.csv",row.names=FALSE)
-  
-  mcpgeo.data.re(mcpgeo.data)
-  mcpmap.re(mcpmap)
-  
-  print(mcpmap)
+  data_filtered <- reactive({
+    req(data)
+    data %>%
+      group_by(mt_track_id()) %>%
+      filter(n() >= 5) %>%
+      ungroup()
   })
   
-  output$act <- downloadHandler(
-    filename="MCP_map.png",
-    content = function(file) {
-      png(file)
-      print(mcpmap.re())
-      dev.off()
-    }
-  )
+  ##select animal in side bar
+  observe({
+    req(data_filtered())
+    df <- data_filtered()
+    
+    animal_choices <- unique(mt_track_id(df))
+    updateCheckboxGroupInput(session = session,
+                             inputId = "animal_selector",
+                             choices = animal_choices,
+                             selected = animal_choices)
+  })
   
-  output$act2 <- downloadHandler(
-    filename="MCP_shapefile.zip", # for the browser / user
-    content = function(file) {
-      # file: is a file path (string) of a nonexistent temp file, and writes the content to that file path
+  
+  selected_data <- reactive({
+    req(input$animal_selector)
+    df <- data_filtered()
+    selected <- filter_track_data(df, .track_id = input$animal_selector)
+    selected
+  })
+  
+  
+  # Compute the MCP 
+  mcp_cal <- reactive({
+    req(input$perc)
+    data_sel <- selected_data()
+    
+    crs_proj <- mt_aeqd_crs(data_sel, center = "center", units = "m")
+    sf_data_proj <- st_transform(data_sel, crs_proj) 
+    sf_data_proj$id <- mt_track_id(sf_data_proj)
+    sp_data_proj <- as_Spatial(sf_data_proj[,'id'])
+    sp_data_proj <- sp_data_proj[,(names(sp_data_proj) %in% "id")] 
+    sp_data_proj$id <- make.names(as.character(sp_data_proj$id),allow_=F)
+
+    data_mcp <- adehabitatHR::mcp(sp_data_proj, input$perc, "m", "km2")
+   
+    sf_mcp <- st_as_sf(data_mcp) %>% 
+      rename(track_id = id) %>%
+      st_transform(4326)
+    sf_mcp$track_id <- as.character(sf_mcp$track_id)
+    
+    data_sel <-  mutate_track_data(data_sel, track_id= make.names(data.frame(mt_track_data(data_sel)[,mt_track_id_column(data_sel)])[,1],allow_=F)) ## adding column 'track_id' to data
+
+    return(list(data_mcp = sf_mcp, track_lines = mt_track_lines(data_sel)))
+    
+  })
+  
+  
+  
+  ##leaflet map####
+
+  mmap <- reactive({
+    req(mcp_cal())
+    mcp_dat <- mcp_cal()
+    bounds <- as.vector(st_bbox(selected_data()))
+    track_lines <- mcp_dat$track_lines
+    sf_mcp <- mcp_dat$data_mcp
+    ids <- unique(c(sf_mcp$track_id, track_lines$track_id))
+    pal <- colorFactor(palette = pals::glasbey(), domain = ids)
+
+    leaflet(options = leafletOptions(minZoom = 2)) %>% 
+      fitBounds(bounds[1], bounds[2], bounds[3], bounds[4]) %>%       
+      addTiles() %>%
+      addProviderTiles("Esri.WorldTopoMap", group = "TopoMap") %>%
+      addProviderTiles("Esri.WorldImagery", group = "Aerial") %>%
+      addTiles(group = "OpenStreetMap") %>%
+      addScaleBar(position = "topleft") %>%
       
-      # our working directory
-      temp_shp <- tempdir()
-      writeOGR(mcpgeo.data.re(),dsn=temp_shp,layer="mcp",driver="ESRI Shapefile",overwrite_layer=TRUE)
-      # zip everything in our temp working directory and store the result in the expected file target
-      zip::zip(
-        zipfile=file, # write into the file the shiny download-handler expects it
-        files = list.files(temp_shp,"mcp",full.names=TRUE), # list all files matching the given pattern 'mcp'
-        mode = "cherry-pick"
+      addPolylines(data = track_lines, color = ~pal(track_lines$track_id),
+                   weight = 3, group = "Tracks") %>%
+      addPolygons(data = sf_mcp, fillColor = ~pal(track_id),color = "black",fillOpacity = 0.4,
+                  weight = 2,label = ~track_id,group = "MCPs") %>%
+      
+      addLegend(position = "bottomright",pal = pal,values = ids,title = "Track") %>%
+      
+      addLayersControl(
+        baseGroups = c("OpenStreetMap", "TopoMap", "Aerial"),
+        overlayGroups = c("Tracks", "MCPs"),
+        options = layersControlOptions(collapsed = FALSE)
       )
-      # provide the generated zip file also as an app artefact
-      #file.copy(file, file=appArtifactPath("MCP_shapefile-artifact.zip"))
-    }
-  )
+  })
+  
+  output$leafmap <- renderLeaflet({mmap()})
+  
+  
+  ###download the table of mcp
+  output$download_mcp_table <- downloadHandler(
+    filename = paste0("MCPs_",input$perc,"_areas.csv"),
+    content = function(file) {
+      mcp <- mcp_cal()$data_mcp
+      mcp_df <- as.data.frame(mcp)
+      df <- data.frame(TrackID = rownames(mcp_df), Area_km2 = mcp_df$area, MCP_percent=input$perc)
+      write.csv(df, file, row.names = FALSE) })
+  
+  
+  
+  ### save map as HTML
+  output$save_html <- downloadHandler(
+    filename = paste0("MCPs_",input$perc,".html"),
+    content = function(file) {
+      saveWidget(widget = mmap(),file=file) })
+  
+  
+  # ### save map as PNG
+  # output$save_png <- downloadHandler(
+  #   filename = paste0("MCPs_",input$perc,".png"),
+  #   content = function(file) {
+  #     html_file <- "leaflet_export.html"
+  #     saveWidget(mmap(), file = html_file, selfcontained = TRUE)
+  #     Sys.sleep(2)
+  #     webshot2::webshot(url = html_file,file = file,vwidth = 1000,vheight = 800) })
+
+
+  ###download shape as kmz  
+  output$download_kmz <- downloadHandler(
+    filename = paste0("MCPs_",input$perc,".kmz"),
+    content = function(file) {
+      temp_kmz <- tempdir()
+      mcp_shape <- st_as_sf(mcp_cal()$data_mcp)
+      kml_path <- file.path(temp_kmz, "mcp.kml")
+      st_write(mcp_shape, kml_path, driver="KML", delete_dsn = TRUE)
+      zip::zip(zipfile = file, files = kml_path, mode = "cherry-pick")})
+  
+
+  # ###download shape as GeoJSON###
+  # output$download_geojson <- downloadHandler(
+  #   filename = paste0("MCPs_",input$perc,".geojson"),
+  #   content = function(file) {
+  #     mcp_l <- mcp_cal()
+  #     mcp_shape <- st_as_sf(mcp_l$data_mcp)
+  #     track_lines <- mcp_l$track_lines
+  #     ids <- unique(mcp_shape$individual_name_deployment_id)
+  #     pal <- colorFactor(palette = pals::cols25(), domain = ids)
+  #     mcp_shape$`fill` <- pal(mcp_shape$individual_name_deployment_id)
+  #     st_write(mcp_shape, file, driver = "GeoJSON", delete_dsn = TRUE)  })
+
+  
+  ###download shape as GeoPackage (GPKG)
+  output$download_gpkg <- downloadHandler(
+    filename = paste0("MCPs_",input$perc,".gpkg"),
+    content = function(file) {
+      mcp_shape <- st_as_sf(mcp_cal()$data_mcp)
+      st_write(mcp_shape, file, driver = "GPKG", delete_dsn = TRUE)} )
+  
   
   return(reactive({ current() }))
 }
