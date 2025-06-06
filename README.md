@@ -3,43 +3,57 @@
 MoveApps
 
 Github repository: *github.com/andreakoelzsch/Minimum-Convex-Polygon*
-
-
+  
+  
 ## Description
-Calculate the individual MCPs of the your Animals' locations and have them plotted on a colourful map. An additional small output file provides the MCP sizes.
+Calculate the individual MCPs of your Individuals' locations and have them plotted on an interactive map. The MCPs polygons can be downloaded as a HTML, KMZ and GeoPackage (GPKG). A table with the MCPs area sizes can also be downloaded.
 
 ## Documentation
-After downsampling your data to maximum 5 minute resolution, this App calculates simple Minimum Convex Polygons (MCPs) for each individual of your data set. Note that calcualtion of MCP is only possible for tracks with at least 5 locations. Individual tracks with less locations are removed for this analysis, but are includedin the output data set for use in further Apps.
+This App calculates simple Minimum Convex Polygons (MCPs) for each individual of your data set. Note that calculation of MCP is only possible for tracks with at least 5 locations. Individual tracks with less locations are removed for this analysis but are included in the output data set for use in further Apps. 
+In addition, the user can select the individual for whom the MCP will be calculated and visualized on the map.
 
-For calculating the planar MCP shapes, the data set is first transformed to an equal area projection (+proj= +aeqd ...). The percentage of points that the MCP shall overlap can be defined by the user.
+To calculate the planar MCP shapes, the dataset is reprojected to an Azimuthal Equidistant (AEQD) coordinate system centered on the spatial extent of the data, using meters as units.
 
-The MCPs for each individual are plotted on a OpenStreetMap of the area with transparent colours. Underneath, the downsampled locations (of the individuals with sufficiently long tracks) are added in the same, individual specific colours. A csv-file with the area values of each MCP is added to the output for download. When pressing the button "Save map" the presently calculated map with MCP can be downloaded as .png plot; when pressing hte button "Save MCP as shapefile" a zip file with the shapefile of the MCP will be downloaded and provided in the output overview.
+The MCPs for each individual are plotted on an OpenStreetMap as the default basemap, with transparent, individual-specific colors. Below the polygons, the downsampled tracks of individuals (with sufficiently long tracks) are displayed in the same matching colors. Users can switch to Topo or Aerial basemaps if desired.
 
-Note that this visualisation requires you to enter an API key from stadia, as it uses their background maps. This is only a workaround for a few months until MoveApps provides an own OSM mirror. Register for a stadia API here, it is free: https://stadiamaps.com/stamen/onboarding/create-account.
+A csv-file summarizing the area of each MCP is available through the "Download MCP Areas Table (CSV)" button. 
+Users also can save the currently displayed map as an HTML file, as a KMZ file (for Google Earth) and as a GeoPackage (GPKG) file (shapefiles for QGis, ArcGis, etc).
+  
+### Application scope
+#### Generality of App usability
+This App was developed for any taxonomic group. 
 
-### Input data
-move2 location
+#### Required data properties
+The App should work for any kind of (location) data. Each track needs a minimum of 5 locations. The location data should not be spacially autocorrelated to compile with the assumptions of the method. WE RECOMEND USING THE APP XXXX TO FILTER THE DATA 
 
-### Output data
-move2 location
+### Input type
+`move2::move2_loc`
+
+### Output type
+`move2::move2_loc`
 
 ### Artefacts
-`MCP_areas.csv`: csv-file with Table of all individuals and the sizes of their calculated MCPs. Note that this is done only once for the initial setting of `perc`. Unit of the area values: km^2.
+This App does not produce Artefacts. The following files can be downloaded optionally:
 
-`MPC_map.png`: png-file of the UI map view. Not in output overview, but direct download via button in UI.
+`MCPs_xx_areas.csv`: `xx` representing the chosen percentage. Contains the area of each MPC per track.
 
-`MCP_shapefile.zip`: zipped shapefile of the MCP layers for upload to a GIS. Not in output overview, but direct download via button in UI.
+`MCPs_xx.html`: `xx` representing the chosen percentage. MCPs polygons on basemap as a HTML file.
 
-### Settings
-`Percentage of points the MCP should overlap`: Defined percentage of locations that the MCP algorithm shall use for calculating the MCP. We use the mcp() implementation of the adehabitat package, where (100 minus `perc` percent of the) locations furthest away from the centroid (arithmetric mean of the coordinates for each animal) are removed. Unit: `%` (range 0-100).
+`MCPs_xx.kmz`: `xx` representing the chosen percentage. MCPs polygons in a Google Earth friendly format.
 
-`Choose a margin size`: Edge area of map around bounding box of the locations for better visibility. Unit: degrees. Default is 0.001. Note that this parameter cannot be interactively changed in the UI, but only set in the Settings in the WFI.
+`MCPs_xx.gpkg`: `xx` representing the chosen percentage. MCPs shapefiles as a GeoPackage (GPKG) in a ArcGis, QGis, etc.
 
-`Resolution of background map`: Zoom of background map (possible values from 3 (continent) to 18 (building)). Depending on the data, high resolutions might not be possible. Default is 5.
+### Settings 
+`Percentage of points included in MCP`: Defined percentage of locations that the MCP algorithm shall use for calculating the MCP. We use the mcp() implementation of the adehabitat package, where (100 minus perc percent of the) locations furthest away from the centroid (arithmetic mean of the coordinates for each animal) are removed. Unit: % (range 0-100). Default 95.
 
-### Null or error handling:
-**Setting `Percentage of points the MCP should overlap`:** A default of 95 percent is provided and is retained if the input values is changed to NULL. If numbers above `100` are provided then the mcp function uses 100 percent of all locations. Negative values are not tolerated and will lead to an error.
+`Select Track`: Select the Track(s) for whom the MCP will be calculated and visualized on the map. By default, all Tracks are selected.
 
-**Setting `Resolution of background map`:** A high value for a large area translates into many tiles that need to be downloaded and it will take a very long time to compile the background map, or even crash before doing so.
+`Map`: selection of basemap (OpenStreetMap, Topomap or Aerial) and display of Tracks and MCPs. By default OpenStreeMap and both Tracks and MCPs are selected 
 
-**Data:** The data are not manipulated in this App, but interactively explored. So that a possible Workflow can be continued after this App, the input data set is returned.
+
+### Changes in output data
+The input data remains unchanged.
+
+### Most common errors
+
+### Null or error handling

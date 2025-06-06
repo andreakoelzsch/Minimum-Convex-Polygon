@@ -1,43 +1,20 @@
 {
+  "version": "1.2",
   "settings": [],
   "dependencies": {
     "R": [
-      {
-        "name": "move"
-      },
-	        {
-        "name": "move2"
-      },
-      {
-        "name": "ggmap"
-      },
-	        {
-        "name": "adehabitatHR"
-      },
-	        {
-        "name": "shiny"
-      },
-	  	        {
-        "name": "shinycssloaders"
-      },
-	        {
-        "name": "fields"
-      },
-	        {
-        "name": "scales"
-      },
-	        {
-        "name": "lubridate"
-      },
-	  	        {
-        "name": "rgeos"
-      },	
-	  {
-        "name": "zip"
-      },
-      {
-        "name":"shinyBS"
-      }
+      {"name": "move2"},
+	    {"name": "adehabitatHR"},
+	    {"name": "shiny"},
+	    {"name": "fields"},
+	    {"name": "shinyBS"},	
+	    {"name": "zip"},
+      {"name":"sf"},
+      {"name":"pals"},
+      {"name":"leaflet"},
+      {"name":"leaflet.extras"},
+      {"name":"htmlwidgets"},
+      {"name":"dplyr"}
     ]
   },
   "createsArtifacts": true,
@@ -51,7 +28,8 @@
     "home range",
     "map",
     "MCP shapefile",
-    "shiny"
+    "shiny",
+    "leaflet"
   ],
   "people": [
     {
@@ -73,9 +51,16 @@
   "orcid": "0000-0002-3357-8533",
   "affiliation": "Max-Planck-Institute of Animal Behavior",
   "affiliationRor": "https://ror.org/026stee22"
+},
+{
+  "firstName": "Nafiseh",
+  "middleInitials": null,
+  "lastName": "Tavakol",
+  "email": "ntavakol@ab.mpg.de",
+  "roles": ["contributor"],
+  "orcid": "0000-0003-3674-4784",
+  "affiliation": "Max-Planck-Institute of Animal Behavior",
+  "affiliationRor": "https://ror.org/026stee22"
 }
-  ],
-  "documentation" : {
-    "url": "https://github.com/andreakoelzsch/Minimum-Convex-Polygon/blob/main/README.md"
-  }
+  ]
 }
