@@ -11,7 +11,7 @@ library(leaflet.extras)
 library(htmlwidgets)
 library(webshot2)
 library(dplyr)
-# library(chromote) #
+
 
 ##### Interface ######
 shinyModuleUserInterface <- function(id, label) {
@@ -164,7 +164,7 @@ shinyModule <- function(input, output, session, data) {
       saveWidget(mmap(), file = html_file, selfcontained = TRUE)
       Sys.sleep(2)
       webshot2::webshot(url = html_file,file = file,vwidth = 1000,vheight = 800) })
-  
+
   
   ###download shape as kmz  
   output$download_kmz <- downloadHandler(

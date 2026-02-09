@@ -53,6 +53,14 @@ This App does not produce Artefacts. The following files can be downloaded optio
 `Map`: selection of basemap (OpenStreetMap, Topomap or Aerial) and display of Tracks and MCPs. By default OpenStreeMap and both Tracks and MCPs are selected 
 
 
+### Settings 
+`Percentage of points included in MCP`: Defined percentage of locations that the MCP algorithm shall use for calculating the MCP. We use the mcp() implementation of the adehabitat package, where (100 minus perc percent of the) locations furthest away from the centroid (arithmetic mean of the coordinates for each animal) are removed. Unit: % (range 0-100). Default 95.
+
+`Select Track`: Select the Track(s) for whom the MCP will be calculated and visualized on the map. By default, all Tracks are selected.
+
+`Map`: selection of basemap (OpenStreetMap, Topomap or Aerial) and display of Tracks and MCPs. By default OpenStreeMap and both Tracks and MCPs are selected 
+
+
 ### Changes in output data
 The input data remains unchanged.
 
