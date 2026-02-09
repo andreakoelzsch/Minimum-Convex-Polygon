@@ -14,7 +14,8 @@
       {"name":"leaflet"},
       {"name":"leaflet.extras"},
       {"name":"htmlwidgets"},
-      {"name":"dplyr"}
+      {"name":"dplyr"},
+      {"name":"webshot2"}
     ]
   },
   "createsArtifacts": true,
@@ -64,3 +65,4 @@
 }
   ]
 }
+
