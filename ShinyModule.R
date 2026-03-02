@@ -126,11 +126,11 @@ shinyModule <- function(input, output, session, data) {
       addPolygons(data = sf_mcp, fillColor = ~pal(track_id),color = "black",fillOpacity = 0.4,
                   weight = 2,label = ~track_id,group = "MCPs") %>%
       
-      addLegend(position = "bottomright",pal = pal,values = ids,title = "Track") %>%
+      addLegend(position = "bottomright",pal = pal,values = ids,title = "Track", opacity = 0.8, group = "Legend") %>%
       
       addLayersControl(
         baseGroups = c("OpenStreetMap", "TopoMap", "Aerial"),
-        overlayGroups = c("Tracks", "MCPs"),
+        overlayGroups = c("Tracks", "MCPs","Legend"),
         options = layersControlOptions(collapsed = FALSE)
       )
   })
