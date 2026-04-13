@@ -71,12 +71,7 @@ shinyModule <- function(input, output, session, data) {
     restored_sel <- isolate(input$animal_selector)
     sel <- if (!is.null(restored_sel)) restored_sel else animal_choices
     
-    checkboxGroupInput(
-      ns("animal_selector"),
-      "Select Track:",
-      choices = animal_choices,
-      selected = sel
-    )
+    checkboxGroupInput( ns("animal_selector"),"Select Track:",choices = animal_choices,selected = sel )
   })
   
   applied_animals <- reactiveVal(NULL)
@@ -90,32 +85,9 @@ shinyModule <- function(input, output, session, data) {
   
   observeEvent(input$animal_selector, {
     vals <- input$animal_selector %||% character(0)
-    updateTextInput(
-      session,
-      "animals_json",
-      value = jsonlite::toJSON(vals, auto_unbox = FALSE)
-    )
+    updateTextInput(session,"animals_json", value = jsonlite::toJSON(vals, auto_unbox = FALSE))
   }, ignoreInit = TRUE)
-  ##select animal in side bar
-  # observe({
-  #   req(data_filtered())
-  #   df <- data_filtered()
-  #   
-  #   animal_choices <- unique(mt_track_id(df))
-  #   updateCheckboxGroupInput(session = session,
-  #                            inputId = "animal_selector",
-  #                            choices = animal_choices,
-  #                            selected = animal_choices)
-  # })
   
-  
-  # selected_data <- reactive({
-  #   req(input$animal_selector)
-  #   df <- data_filtered()
-  #   selected <- filter_track_data(df, .track_id = input$animal_selector)
-  #   selected
-  # })
-  # 
   selected_data <- reactive({
     req(init_applied())
     
@@ -126,6 +98,7 @@ shinyModule <- function(input, output, session, data) {
     
     filter_track_data(df, .track_id = sel)
   })
+  
   # Compute the MCP 
   mcp_cal <- reactive({
     req(input$perc)
