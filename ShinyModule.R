@@ -182,8 +182,11 @@ shinyModule <- function(input, output, session, data) {
   
   ### save map as PNG
   output$save_png <- downloadHandler(
-    filename = paste0("MCPs_",input$perc,".png"),
+    filename = function() paste0("MCPs_",input$perc,".png"),
     content = function(file) {
+    
+    shinybusy::show_modal_spinner(spin = "fading-circle", text = "Saving PNG…")
+      on.exit(shinybusy::remove_modal_spinner(), add = TRUE)
       # Render the map to an HTML file first. selfcontained = FALSE avoids the
       # pandoc dependency (the browser loads the local file + sidecar directly).
       html_file <- tempfile(fileext = ".html")
@@ -199,7 +202,7 @@ shinyModule <- function(input, output, session, data) {
       # avoids the deadlock.
       callr::r(
         function(html_file, out_file) {
-          webshot2::webshot(url = html_file, file = out_file, vwidth = 1000, vheight = 800)
+          webshot2::webshot(url = html_file, file = out_file, vwidth = 1000, vheight = 800, delay = 2)
         },
         args = list(html_file = html_file, out_file = file)
       )
