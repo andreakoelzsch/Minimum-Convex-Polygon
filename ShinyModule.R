@@ -182,12 +182,31 @@ shinyModule <- function(input, output, session, data) {
   
   ### save map as PNG
   output$save_png <- downloadHandler(
-    filename = paste0("MCPs_",input$perc,".png"),
+    filename = function() paste0("MCPs_",input$perc,".png"),
     content = function(file) {
-      html_file <- "leaflet_export.html"
-      saveWidget(mmap(), file = html_file, selfcontained = TRUE)
-      Sys.sleep(2)
-      webshot2::webshot(url = html_file,file = file,vwidth = 1000,vheight = 800) })
+    
+    shinybusy::show_modal_spinner(spin = "fading-circle", text = "Saving PNG…")
+      on.exit(shinybusy::remove_modal_spinner(), add = TRUE)
+      # Render the map to an HTML file first. selfcontained = FALSE avoids the
+      # pandoc dependency (the browser loads the local file + sidecar directly).
+      html_file <- tempfile(fileext = ".html")
+      saveWidget(mmap(), file = html_file, selfcontained = FALSE)
+      html_file <- normalizePath(html_file, winslash = "/", mustWork = TRUE)
+
+      # webshot2/chromote drive headless Chrome over the SAME global `later`
+      # event loop that Shiny is already running. Calling it directly from a
+      # Shiny handler re-enters that loop and deadlocks (the R process spins at
+      # ~100% CPU, the screenshot never completes, and the download surfaces as
+      # a gateway 500 / "connection prematurely closed"). Running it in a
+      # separate R process via callr gives chromote its own event loop and
+      # avoids the deadlock.
+      callr::r(
+        function(html_file, out_file) {
+          webshot2::webshot(url = html_file, file = out_file, vwidth = 1000, vheight = 800, delay = 2)
+        },
+        args = list(html_file = html_file, out_file = file)
+      )
+    })
   
   
   ###download shape as kmz  
