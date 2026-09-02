@@ -1,15 +1,15 @@
 library(move2)
 library(adehabitatHR)
 library(shiny)
-library(fields)
 library(zip)
 library(shinyBS)
 library(sf)
 library(pals)
 library(leaflet)
-library(leaflet.extras)
 library(htmlwidgets)
 library(webshot2)
+library(callr)
+library(shinybusy)
 library(dplyr)
 library(jsonlite)
 library(shinycssloaders)
@@ -24,7 +24,7 @@ shinyModuleUserInterface <- function(id, label) {
     titlePanel("Minimum Convex Polygon (MCP)"),
     sidebarLayout(
       sidebarPanel(
-        sliderInput(ns("perc"), "Percentage of points included in MCP", min = 0, max = 100, value = 95, width = "100%"),
+        sliderInput(ns("perc"), "Percentage of points included in MCP", min = 1, max = 100, value = 95, width = "100%"),
         #checkboxGroupInput(ns("animal_selector"), "Select Track:", choices = NULL),
         uiOutput(ns("animals_ui")),
         tags$div(style = "display:none;", textInput(ns("animals_json"), label = NULL, value = "")),
@@ -78,10 +78,9 @@ shinyModule <- function(input, output, session, data) {
   init_applied <- reactiveVal(FALSE)
   
   observeEvent(input$animal_selector, {
-    req(!is.null(input$animal_selector))
-    applied_animals(as.character(input$animal_selector))
+    applied_animals(as.character(input$animal_selector %||% character(0)))
     init_applied(TRUE)
-  }, ignoreInit = FALSE)
+  }, ignoreInit = FALSE, ignoreNULL = FALSE)
   
   observeEvent(input$animal_selector, {
     vals <- input$animal_selector %||% character(0)
@@ -103,6 +102,7 @@ shinyModule <- function(input, output, session, data) {
   mcp_cal <- reactive({
     req(input$perc)
     data_sel <- selected_data()
+    validate(need(nrow(data_sel) > 0, "Select at least one track."))
     
     crs_proj <- mt_aeqd_crs(data_sel, center = "center", units = "m")
     sf_data_proj <- st_transform(data_sel, crs_proj) 
@@ -164,18 +164,17 @@ shinyModule <- function(input, output, session, data) {
   
   ###download the table of mcp
   output$download_mcp_table <- downloadHandler(
-    filename = paste0("MCPs_",input$perc,"_areas.csv"),
+    filename = function() paste0("MCPs_", input$perc, "_areas.csv"),
     content = function(file) {
-      mcp <- mcp_cal()$data_mcp
-      mcp_df <- as.data.frame(mcp)
-      df <- data.frame(TrackID = rownames(mcp_df), Area_km2 = mcp_df$area, MCP_percent=input$perc)
+      mcp_df <- as.data.frame(mcp_cal()$data_mcp)
+      df <- data.frame(TrackID = mcp_df$track_id, Area_km2 = mcp_df$area, MCP_percent = input$perc)
       write.csv(df, file, row.names = FALSE) })
   
   
   
   ### save map as HTML
   output$save_html <- downloadHandler(
-    filename = paste0("MCPs_",input$perc,".html"),
+    filename = function() paste0("MCPs_", input$perc, ".html"),
     content = function(file) {
       saveWidget(widget = mmap(),file=file) })
   
@@ -211,7 +210,7 @@ shinyModule <- function(input, output, session, data) {
   
   ###download shape as kmz  
   output$download_kmz <- downloadHandler(
-    filename = paste0("MCPs_",input$perc,".kmz"),
+    filename = function() paste0("MCPs_", input$perc, ".kmz"),
     content = function(file) {
       temp_kmz <- tempdir()
       mcp_shape <- st_as_sf(mcp_cal()$data_mcp)
@@ -235,7 +234,7 @@ shinyModule <- function(input, output, session, data) {
   
   ###download shape as GeoPackage (GPKG)
   output$download_gpkg <- downloadHandler(
-    filename = paste0("MCPs_",input$perc,".gpkg"),
+    filename = function() paste0("MCPs_", input$perc, ".gpkg"),
     content = function(file) {
       mcp_shape <- st_as_sf(mcp_cal()$data_mcp)
       st_write(mcp_shape, file, driver = "GPKG", delete_dsn = TRUE)} )

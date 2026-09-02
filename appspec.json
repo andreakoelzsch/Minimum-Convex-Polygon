@@ -6,16 +6,16 @@
       {"name": "move2"},
 	    {"name": "adehabitatHR"},
 	    {"name": "shiny"},
-	    {"name": "fields"},
 	    {"name": "shinyBS"},	
 	    {"name": "zip"},
       {"name":"sf"},
       {"name":"pals"},
       {"name":"leaflet"},
-      {"name":"leaflet.extras"},
       {"name":"htmlwidgets"},
       {"name":"dplyr"},
       {"name":"webshot2"},
+      {"name":"callr"},
+      {"name":"shinybusy"},
       {"name":"jsonlite"},
       {"name":"shinycssloaders"}
     ]
