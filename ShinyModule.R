@@ -11,7 +11,10 @@ library(leaflet.extras)
 library(htmlwidgets)
 library(webshot2)
 library(dplyr)
+library(jsonlite)
+library(shinycssloaders)
 
+`%||%` <- function(x, y) if (is.null(x)) y else x
 
 ##### Interface ######
 shinyModuleUserInterface <- function(id, label) {
@@ -22,7 +25,9 @@ shinyModuleUserInterface <- function(id, label) {
     sidebarLayout(
       sidebarPanel(
         sliderInput(ns("perc"), "Percentage of points included in MCP", min = 0, max = 100, value = 95, width = "100%"),
-        checkboxGroupInput(ns("animal_selector"), "Select Track:", choices = NULL),
+        #checkboxGroupInput(ns("animal_selector"), "Select Track:", choices = NULL),
+        uiOutput(ns("animals_ui")),
+        tags$div(style = "display:none;", textInput(ns("animals_json"), label = NULL, value = "")),
         downloadButton(ns("save_html"),"Download as HTML", class = "btn-sm"),
         downloadButton(ns("save_png"), "Save Map as PNG", class = "btn-sm"),
         # downloadButton(ns("download_geojson"), "Download MCP as GeoJSON", class = "btn-sm"),
@@ -31,8 +36,11 @@ shinyModuleUserInterface <- function(id, label) {
         downloadButton(ns("download_gpkg"), "Download as GPKG", class = "btn-sm"),
         bsTooltip(id=ns("download_gpkg"), title="Shapefile for QGIS/ArcGIS", placement = "bottom", trigger = "hover", options = list(container = "body")),
         downloadButton(ns("download_mcp_table"), "Download MCP Areas Table", class = "btn-sm"),
-        ,width = 3),
-      mainPanel(leafletOutput(ns("leafmap"), height = "85vh") ,width = 9)
+        width = 3),
+      mainPanel(
+        withSpinner(leafletOutput(ns("leafmap"), height = "85vh")),
+        width = 9
+      )
     )
   )
 }
@@ -54,26 +62,42 @@ shinyModule <- function(input, output, session, data) {
       ungroup()
   })
   
-  ##select animal in side bar
-  observe({
+  all_ids_vec <- reactive({
     req(data_filtered())
-    df <- data_filtered()
+    sort(unique(as.character(mt_track_id(data_filtered()))))
+  })
+  output$animals_ui <- renderUI({
+    animal_choices <- all_ids_vec()
+    restored_sel <- isolate(input$animal_selector)
+    sel <- if (!is.null(restored_sel)) restored_sel else animal_choices
     
-    animal_choices <- unique(mt_track_id(df))
-    updateCheckboxGroupInput(session = session,
-                             inputId = "animal_selector",
-                             choices = animal_choices,
-                             selected = animal_choices)
+    checkboxGroupInput( ns("animal_selector"),"Select Track:",choices = animal_choices,selected = sel )
   })
   
+  applied_animals <- reactiveVal(NULL)
+  init_applied <- reactiveVal(FALSE)
+  
+  observeEvent(input$animal_selector, {
+    req(!is.null(input$animal_selector))
+    applied_animals(as.character(input$animal_selector))
+    init_applied(TRUE)
+  }, ignoreInit = FALSE)
+  
+  observeEvent(input$animal_selector, {
+    vals <- input$animal_selector %||% character(0)
+    updateTextInput(session,"animals_json", value = jsonlite::toJSON(vals, auto_unbox = FALSE))
+  }, ignoreInit = TRUE)
   
   selected_data <- reactive({
-    req(input$animal_selector)
-    df <- data_filtered()
-    selected <- filter_track_data(df, .track_id = input$animal_selector)
-    selected
+    req(init_applied())
+    
+    sel <- applied_animals()
+    df  <- data_filtered()
+    
+    if (is.null(sel) || length(sel) == 0) return(df[0, ])
+    
+    filter_track_data(df, .track_id = sel)
   })
-  
   
   # Compute the MCP 
   mcp_cal <- reactive({
@@ -158,13 +182,32 @@ shinyModule <- function(input, output, session, data) {
   
   ### save map as PNG
   output$save_png <- downloadHandler(
-    filename = paste0("MCPs_",input$perc,".png"),
+    filename = function() paste0("MCPs_",input$perc,".png"),
     content = function(file) {
-      html_file <- "leaflet_export.html"
-      saveWidget(mmap(), file = html_file, selfcontained = TRUE)
-      Sys.sleep(2)
-      webshot2::webshot(url = html_file,file = file,vwidth = 1000,vheight = 800) })
+    
+    shinybusy::show_modal_spinner(spin = "fading-circle", text = "Saving PNG…")
+      on.exit(shinybusy::remove_modal_spinner(), add = TRUE)
+      # Render the map to an HTML file first. selfcontained = FALSE avoids the
+      # pandoc dependency (the browser loads the local file + sidecar directly).
+      html_file <- tempfile(fileext = ".html")
+      saveWidget(mmap(), file = html_file, selfcontained = FALSE)
+      html_file <- normalizePath(html_file, winslash = "/", mustWork = TRUE)
 
+      # webshot2/chromote drive headless Chrome over the SAME global `later`
+      # event loop that Shiny is already running. Calling it directly from a
+      # Shiny handler re-enters that loop and deadlocks (the R process spins at
+      # ~100% CPU, the screenshot never completes, and the download surfaces as
+      # a gateway 500 / "connection prematurely closed"). Running it in a
+      # separate R process via callr gives chromote its own event loop and
+      # avoids the deadlock.
+      callr::r(
+        function(html_file, out_file) {
+          webshot2::webshot(url = html_file, file = out_file, vwidth = 1000, vheight = 800, delay = 2)
+        },
+        args = list(html_file = html_file, out_file = file)
+      )
+    })
+  
   
   ###download shape as kmz  
   output$download_kmz <- downloadHandler(

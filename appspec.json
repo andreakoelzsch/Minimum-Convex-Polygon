@@ -15,7 +15,9 @@
       {"name":"leaflet.extras"},
       {"name":"htmlwidgets"},
       {"name":"dplyr"},
-      {"name":"webshot2"}
+      {"name":"webshot2"},
+      {"name":"jsonlite"},
+      {"name":"shinycssloaders"}
     ]
   },
   "createsArtifacts": true,
