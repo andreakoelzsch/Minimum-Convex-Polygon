@@ -140,12 +140,13 @@ shinyModule <- function(input, output, session, data) {
   base_map <- function() {
     leaflet(options = leafletOptions(minZoom = 2)) %>%
       addTiles() %>%
+      # addProviderTiles("OpenStreetMap", group = "OpenStreetMap") %>%
       addProviderTiles("Esri.WorldTopoMap", group = "TopoMap") %>%
       addProviderTiles("Esri.WorldImagery", group = "Aerial") %>%
-      addTiles(group = "OpenStreetMap") %>%
+      addProviderTiles("OpenStreetMap", group = "OpenStreetMap") %>%
       addScaleBar(position = "topleft") %>%
       addLayersControl(
-        baseGroups = c("OpenStreetMap", "TopoMap", "Aerial"),
+        baseGroups = c("TopoMap", "Aerial", "OpenStreetMap"),
         overlayGroups = c("Tracks", "MCPs"),
         options = layersControlOptions(collapsed = FALSE)
       )
