@@ -102,7 +102,7 @@ shinyModule <- function(input, output, session, data) {
   mcp_cal <- reactive({
     req(input$perc)
     data_sel <- selected_data()
-    validate(need(nrow(data_sel) > 0, "Select at least one track."))
+    shiny::validate(shiny::need(nrow(data_sel) > 0, "Select at least one track."))
     
     crs_proj <- mt_aeqd_crs(data_sel, center = "center", units = "m")
     sf_data_proj <- st_transform(data_sel, crs_proj) 
@@ -128,38 +128,87 @@ shinyModule <- function(input, output, session, data) {
   
   ##leaflet map####
   
-  mmap <- reactive({
-    req(mcp_cal())
-    mcp_dat <- mcp_cal()
-    bounds <- as.vector(st_bbox(selected_data()))
-    track_lines <- mcp_dat$track_lines
-    sf_mcp <- mcp_dat$data_mcp
-    ids <- unique(c(sf_mcp$track_id, track_lines$track_id))
-    pal <- colorFactor(palette = pals::glasbey(), domain = ids)
-    
-    leaflet(options = leafletOptions(minZoom = 2)) %>% 
-      fitBounds(bounds[1], bounds[2], bounds[3], bounds[4]) %>%       
+  # Fixed opacity for the MCP fills; the track lines stay solid.
+  layer_opacity <- 0.4
+  
+  # The map is built in two parts. base_map() holds everything that never
+  # depends on the inputs (tiles, scale bar, layers control); add_data_layers()
+  # holds everything that does. renderLeaflet() below draws the base only, so
+  # moving the slider updates the data layers through leafletProxy() instead of
+  # rebuilding the widget -- rebuilding is what reset the chosen basemap, the
+  # overlay checkboxes and the zoom on every slider move.
+  base_map <- function() {
+    leaflet(options = leafletOptions(minZoom = 2)) %>%
       addTiles() %>%
       addProviderTiles("Esri.WorldTopoMap", group = "TopoMap") %>%
       addProviderTiles("Esri.WorldImagery", group = "Aerial") %>%
       addTiles(group = "OpenStreetMap") %>%
       addScaleBar(position = "topleft") %>%
-      
-      addPolylines(data = track_lines, color = ~pal(track_lines$track_id),
-                   weight = 3, group = "Tracks") %>%
-      addPolygons(data = sf_mcp, fillColor = ~pal(track_id),color = "black",fillOpacity = 0.4,
-                  weight = 2,label = ~track_id,group = "MCPs") %>%
-      
-      addLegend(position = "bottomright",pal = pal,values = ids,title = "Track") %>%
-      
       addLayersControl(
         baseGroups = c("OpenStreetMap", "TopoMap", "Aerial"),
         overlayGroups = c("Tracks", "MCPs"),
         options = layersControlOptions(collapsed = FALSE)
       )
+  }
+  
+  # layerId on the legend so the proxy can replace it instead of stacking one
+  # legend per redraw.
+  add_data_layers <- function(map, mcp_dat) {
+    track_lines <- mcp_dat$track_lines
+    sf_mcp <- mcp_dat$data_mcp
+    ids <- unique(c(sf_mcp$track_id, track_lines$track_id))
+    pal <- colorFactor(palette = pals::glasbey(), domain = ids)
+    
+    map %>%
+      addPolylines(data = track_lines, color = ~pal(track_lines$track_id),
+                   weight = 3, opacity = 1, group = "Tracks") %>%
+      addPolygons(data = sf_mcp, fillColor = ~pal(track_id),color = "black",fillOpacity = layer_opacity,
+                  weight = 2,label = ~track_id,group = "MCPs") %>%
+      
+      addLegend(position = "bottomright",pal = pal,values = ids,title = "Track",
+                layerId = "track_legend")
+  }
+  
+  # Full standalone widget, used by the HTML and PNG downloads only.
+  mmap <- reactive({
+    mcp_dat <- mcp_cal()
+    bounds <- as.vector(st_bbox(selected_data()))
+    
+    base_map() %>%
+      fitBounds(bounds[1], bounds[2], bounds[3], bounds[4]) %>%
+      add_data_layers(mcp_dat)
   })
   
-  output$leafmap <- renderLeaflet({mmap()})
+  output$leafmap <- renderLeaflet({base_map()})
+  
+  # Redraw the data layers whenever the percentage or the track selection
+  # changes. The view is left alone here on purpose.
+  observe({
+    proxy <- leafletProxy("leafmap", session) %>%
+      clearGroup("Tracks") %>%
+      clearGroup("MCPs") %>%
+      removeControl("track_legend")
+    
+    if (nrow(selected_data()) == 0) {
+      proxy %>% addControl("Select at least one track.", position = "topright",
+                           layerId = "empty_msg")
+      return(invisible(NULL))
+    }
+    
+    proxy %>%
+      removeControl("empty_msg") %>%
+      add_data_layers(mcp_cal())
+  })
+  
+  # Re-frame only when the selected tracks change: the bounds do not depend on
+  # the slider, so this keeps the user's pan/zoom while they drag it.
+  observeEvent(selected_data(), {
+    d <- selected_data()
+    req(nrow(d) > 0)
+    bounds <- as.vector(st_bbox(d))
+    leafletProxy("leafmap", session) %>%
+      fitBounds(bounds[1], bounds[2], bounds[3], bounds[4])
+  })
   
   
   ###download the table of mcp
