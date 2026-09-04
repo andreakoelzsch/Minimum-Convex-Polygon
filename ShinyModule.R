@@ -249,12 +249,41 @@ shinyModule <- function(input, output, session, data) {
       # a gateway 500 / "connection prematurely closed"). Running it in a
       # separate R process via callr gives chromote its own event loop and
       # avoids the deadlock.
-      callr::r(
-        function(html_file, out_file) {
-          webshot2::webshot(url = html_file, file = out_file, vwidth = 1000, vheight = 800, delay = 2)
-        },
-        args = list(html_file = html_file, out_file = file)
-      )
+      ok <- tryCatch(
+        callr::r(
+          function(html_file, out_file) {
+            # chromote only adds --no-sandbox / --disable-dev-shm-usage when it
+            # can detect that it runs inside a container, and it detects that
+            # by looking for /.dockerenv or the string "docker" in
+            # /proc/self/cgroup. Neither marker exists on the MoveApps
+            # runtime, so Chrome starts sandboxed and with the default 64 MB
+            # /dev/shm; it is then killed as soon as it opens the page, which
+            # surfaces as "Session and underlying target have been closed".
+            # Passing the flags explicitly is harmless outside a container.
+            chromote::set_chrome_args(unique(c(
+              "--no-sandbox",
+              "--disable-dev-shm-usage",
+              "--disable-gpu",
+              chromote::default_chrome_args()
+            )))
+            webshot2::webshot(url = html_file, file = out_file, vwidth = 1000, vheight = 800, delay = 2)
+            file.exists(out_file) && file.size(out_file) > 0
+          },
+          args = list(html_file = html_file, out_file = file)
+        ),
+        error = function(e) {
+          # The callr error text carries the chromote/Chrome cause; keep it in
+          # the app log, but do not let the raw message be the only feedback.
+          message("PNG export failed: ", conditionMessage(e))
+          FALSE
+        })
+      
+      if (!isTRUE(ok)) {
+        showNotification(
+          "Could not render the map to PNG on this server. Please use 'Download as HTML' instead.",
+          type = "error", duration = 10)
+        stop("PNG export failed: headless Chrome could not render the map.")
+      }
     })
   
   

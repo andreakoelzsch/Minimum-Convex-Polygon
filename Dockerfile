@@ -35,8 +35,10 @@ RUN install -d -o moveapps -g staff $HOME/.cache/R
 # Install Google Chrome for webshot2/chromote (PNG export of leaflet maps).
 # Note: Ubuntu's `chromium` package is a snap stub that does not work in
 # containers; we install Chrome from Google's APT repo instead.
-# No CHROMOTE_* env needed: chromote auto-detects /usr/bin/google-chrome and
-# already passes --no-sandbox/--disable-dev-shm-usage via default_chrome_args().
+# chromote auto-detects /usr/bin/google-chrome. Its default_chrome_args() only
+# adds --no-sandbox/--disable-dev-shm-usage when it recognises the container
+# (/.dockerenv or "docker" in /proc/self/cgroup), which the MoveApps runtime
+# does not provide -- ShinyModule.R therefore sets those flags explicitly.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget gnupg ca-certificates \
     && wget -qO- https://dl-ssl.google.com/linux/linux_signing_key.pub \
