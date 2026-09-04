@@ -190,7 +190,27 @@ shinyModule <- function(input, output, session, data) {
     
     base_map() %>%
       fitBounds(bounds[1], bounds[2], bounds[3], bounds[4]) %>%
-      add_data_layers(mcp_dat)
+      add_data_layers(mcp_dat) %>%
+      # scrolable ledgend
+      onRender("function(el, x) {
+        function cap(lg) {
+          lg.style.maxHeight = '55vh';
+          lg.style.overflowY = 'auto';
+          L.DomEvent.disableScrollPropagation(lg);
+        }
+        function capAll(root) {
+          Array.prototype.forEach.call(root.querySelectorAll('.info.legend'), cap);
+        }
+        capAll(el);
+        new MutationObserver(function(muts) {
+          Array.prototype.forEach.call(muts, function(m) {
+            Array.prototype.forEach.call(m.addedNodes, function(n) {
+              if (n.nodeType !== 1) return;
+              if (n.classList.contains('legend')) cap(n); else capAll(n);
+            });
+          });
+        }).observe(el, { childList: true, subtree: true });
+      }")
   })
   
 
