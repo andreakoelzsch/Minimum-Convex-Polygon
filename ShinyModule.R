@@ -21,6 +21,10 @@ shinyModuleUserInterface <- function(id, label) {
   ns <- NS(id)
   
   tagList(
+    # Small corner spinner whenever the server is busy
+    shinybusy::add_busy_spinner(spin = "fading-circle", color = "#0275D8",
+                                position = "bottom-left", timeout = 800,
+                                onstart = FALSE),
     titlePanel("Minimum Convex Polygon (MCP)"),
     sidebarLayout(
       sidebarPanel(
@@ -38,7 +42,17 @@ shinyModuleUserInterface <- function(id, label) {
         downloadButton(ns("download_mcp_table"), "Download MCP Areas Table", class = "btn-sm"),
         width = 3),
       mainPanel(
-        withSpinner(leafletOutput(ns("leafmap"), height = "85vh")),
+        div(
+          style = "position:relative;",
+          withSpinner(leafletOutput(ns("leafmap"), height = "85vh")),
+          conditionalPanel(
+            condition = "output.map_ready !== true", ns = ns,
+            style = "position:absolute; top:0; left:0; right:0; bottom:0; background:#fff; z-index:500;",
+            div(style = "position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;",
+                shinybusy::spin_kit(spin = "fading-circle", color = "#0275D8",
+                                    style = "width:60px; height:60px; margin:0 auto;"),
+                tags$p("Calculating MCPs\u2026", style = "margin-top:16px;")))
+        ),
         width = 9
       )
     )
@@ -140,7 +154,6 @@ shinyModule <- function(input, output, session, data) {
   base_map <- function() {
     leaflet(options = leafletOptions(minZoom = 2)) %>%
       addTiles() %>%
-      # addProviderTiles("OpenStreetMap", group = "OpenStreetMap") %>%
       addProviderTiles("Esri.WorldTopoMap", group = "TopoMap") %>%
       addProviderTiles("Esri.WorldImagery", group = "Aerial") %>%
       addProviderTiles("OpenStreetMap", group = "OpenStreetMap") %>%
@@ -180,7 +193,24 @@ shinyModule <- function(input, output, session, data) {
       add_data_layers(mcp_dat)
   })
   
-  output$leafmap <- renderLeaflet({base_map()})
+
+  map_ready <- reactiveVal(FALSE)
+
+  observe({
+    req(!map_ready())
+    req(nrow(selected_data()) >0)
+    mcp_cal()
+    map_ready(TRUE)
+  })
+
+  output$leafmap <- renderLeaflet({
+    req(map_ready())
+    isolate(mmap())
+  })
+
+
+  output$map_ready <- reactive(map_ready())
+  outputOptions(output, "map_ready", suspendWhenHidden = FALSE)
   
   # Redraw the data layers whenever the percentage or the track selection
   # changes. The view is left alone here on purpose.
@@ -277,7 +307,7 @@ shinyModule <- function(input, output, session, data) {
           message("PNG export failed: ", conditionMessage(e))
           FALSE
         })
-      
+
       if (!isTRUE(ok)) {
         showNotification(
           "Could not render the map to PNG on this server. Please use 'Download as HTML' instead.",
